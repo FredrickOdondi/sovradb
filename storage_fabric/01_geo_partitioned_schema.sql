@@ -25,6 +25,12 @@ CREATE TABLE sovereign_users_eu
     FOR VALUES IN ('EU') 
     TABLESPACE eu_data_space;
 
+-- Africa Partition
+CREATE TABLE sovereign_users_af
+    PARTITION OF sovereign_users
+    FOR VALUES IN ('AF')
+    TABLESPACE af_data_space;
+
 -- United States Partition
 CREATE TABLE sovereign_users_us 
     PARTITION OF sovereign_users 

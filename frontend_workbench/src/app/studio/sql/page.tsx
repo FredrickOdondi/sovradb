@@ -4,6 +4,7 @@ import { useState } from "react";
 import Editor from "@monaco-editor/react";
 import { Play, Database, ShieldAlert, CheckCircle2, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { executeRawEditorQuery } from "@/app/actions";
 
 export default function SqlEditorPage() {
@@ -38,9 +39,8 @@ export default function SqlEditorPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-6 flex-1 min-h-0">
-        <div className="col-span-2 flex flex-col space-y-6">
-          <Card className="flex flex-col overflow-hidden h-[60%] shadow-sm">
+      <div className="grid grid-cols-3 gap-6 h-[45%] shrink-0">
+        <Card className="col-span-2 flex flex-col overflow-hidden shadow-sm">
             <CardHeader className="border-b border-border bg-secondary/20 pb-4">
               <CardTitle className="text-sm font-mono flex items-center text-muted-foreground">
                 <Database className="w-4 h-4 mr-2" /> query.sql
@@ -63,23 +63,6 @@ export default function SqlEditorPage() {
               />
             </CardContent>
           </Card>
-
-          <Card className="flex flex-col h-[40%] overflow-hidden shadow-sm">
-            <CardHeader className="py-3 border-b border-border bg-secondary/20">
-              <CardTitle className="text-sm font-medium flex items-center">
-                {result?.success ? <CheckCircle2 className="w-4 h-4 text-green-500 mr-2" /> : result ? <AlertCircle className="w-4 h-4 text-red-500 mr-2" /> : null}
-                Query Results
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 overflow-auto bg-background font-mono text-xs text-muted-foreground">
-              {result ? (
-                <pre className="p-4">{JSON.stringify(result, null, 2)}</pre>
-              ) : (
-                <div className="h-full flex items-center justify-center italic opacity-50">Awaiting execution...</div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
 
         <Card className="col-span-1 h-fit shadow-sm">
           <CardHeader>
@@ -107,6 +90,51 @@ export default function SqlEditorPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="flex flex-col flex-1 min-h-0 overflow-hidden shadow-sm">
+        <CardHeader className="py-3 border-b border-border bg-secondary/20 shrink-0">
+          <CardTitle className="text-sm font-medium flex items-center">
+            {result?.success ? <CheckCircle2 className="w-4 h-4 text-green-500 mr-2" /> : result ? <AlertCircle className="w-4 h-4 text-red-500 mr-2" /> : null}
+            Query Results
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0 overflow-auto bg-background font-mono text-xs text-muted-foreground flex-1">
+          {result ? (
+            result.success ? (
+              Array.isArray(result.data) && result.data.length > 0 ? (
+                <Table>
+                  <TableHeader className="bg-secondary/30">
+                    <TableRow>
+                      {Object.keys(result.data[0]).map((key) => (
+                        <TableHead key={key} className="whitespace-nowrap font-semibold">
+                          {key}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {result.data.map((row: any, i: number) => (
+                      <TableRow key={i}>
+                        {Object.values(row).map((val: any, j: number) => (
+                          <TableCell key={j} className="whitespace-nowrap">
+                            {val === null ? <span className="italic opacity-50">null</span> : String(val)}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="p-4 text-muted-foreground italic">No rows returned.</div>
+              )
+            ) : (
+              <pre className="p-4 text-red-500">{result.error || "Unknown Error"}</pre>
+            )
+          ) : (
+            <div className="h-full flex items-center justify-center italic opacity-50">Awaiting execution...</div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -234,7 +234,8 @@ SELECT
     (SELECT COUNT(*) FROM sovra_control.projects)                     AS tenant_count,
     (SELECT COUNT(*) FROM sovereign_users)                            AS total_user_rows,
     (SELECT COUNT(*) FROM sovereign_users WHERE region_code = 'US')   AS us_user_rows,
-    (SELECT COUNT(*) FROM sovereign_users WHERE region_code = 'EU')   AS eu_user_rows;
+    (SELECT COUNT(*) FROM sovereign_users WHERE region_code = 'EU')   AS eu_user_rows,
+    (SELECT COUNT(*) FROM sovereign_users WHERE region_code = 'AF')   AS af_user_rows;
 
 GRANT SELECT ON sovra_control.v_database_metrics TO api_user;
 GRANT SELECT ON sovra_control.v_database_metrics TO developer_branch_role;
@@ -246,112 +247,7 @@ GRANT SELECT ON sovra_control.v_database_metrics TO developer_branch_role;
 -- All INSERTs are idempotent (ON CONFLICT DO NOTHING).
 -- ==============================================================================
 
--- Demo developer (tenant_app login: mike@example.com / SovraDemo123!)
--- password_hash = SHA-256('SovraDemo123!') precomputed
-INSERT INTO sovra_control.developers (id, email, password_hash)
-VALUES (
-    'a0000000-0000-0000-0000-000000000001'::UUID,
-    'mike@example.com',
-    'b8e9f3a2c1d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0'
-)
-ON CONFLICT (email) DO NOTHING;
-
--- Demo developer 2 (FinTech)
-INSERT INTO sovra_control.developers (id, email, password_hash)
-VALUES (
-    'a0000000-0000-0000-0000-000000000002'::UUID,
-    'fintech@example.com',
-    'b8e9f3a2c1d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0'
-)
-ON CONFLICT (email) DO NOTHING;
-
--- Acme Corp project (US-East, FPE enabled — matches admin dashboard row)
-INSERT INTO sovra_control.projects
-    (id, developer_id, tenant_id, company_name, region_pin, fpe_enabled, region_code)
-VALUES (
-    'b0000000-0000-0000-0000-000000000001'::UUID,
-    'a0000000-0000-0000-0000-000000000001'::UUID,
-    'c0000000-0000-0000-0000-000000000001'::UUID,
-    'Acme Corp',  'US-East Only', true, 'US'
-)
-ON CONFLICT DO NOTHING;
-
--- FinTech App project (EU-Central, FPE enabled)
-INSERT INTO sovra_control.projects
-    (id, developer_id, tenant_id, company_name, region_pin, fpe_enabled, region_code)
-VALUES (
-    'b0000000-0000-0000-0000-000000000002'::UUID,
-    'a0000000-0000-0000-0000-000000000002'::UUID,
-    'c0000000-0000-0000-0000-000000000002'::UUID,
-    'FinTech App', 'EU-Central Only', true, 'EU'
-)
-ON CONFLICT DO NOTHING;
-
--- Global E-Commerce project (Multi-Region, FPE enabled)
-INSERT INTO sovra_control.projects
-    (id, developer_id, tenant_id, company_name, region_pin, fpe_enabled, region_code)
-VALUES (
-    'b0000000-0000-0000-0000-000000000003'::UUID,
-    'a0000000-0000-0000-0000-000000000001'::UUID,
-    'c0000000-0000-0000-0000-000000000003'::UUID,
-    'Global E-Commerce', 'Multi-Region', true, 'US'
-)
-ON CONFLICT DO NOTHING;
-
--- Stark Ind project (US-West, FPE disabled — matches admin dashboard row)
-INSERT INTO sovra_control.projects
-    (id, developer_id, tenant_id, company_name, region_pin, fpe_enabled, region_code)
-VALUES (
-    'b0000000-0000-0000-0000-000000000004'::UUID,
-    'a0000000-0000-0000-0000-000000000001'::UUID,
-    'c0000000-0000-0000-0000-000000000004'::UUID,
-    'Stark Ind', 'US-West', false, 'US'
-)
-ON CONFLICT DO NOTHING;
-
--- Default API keys for Acme Corp (matches studio/settings hardcoded mock)
-INSERT INTO sovra_control.api_keys (project_id, name, key_type, key_value)
-VALUES
-    ('b0000000-0000-0000-0000-000000000001'::UUID,
-     'Default Publishable Key', 'pk', 'pk_live_81a_a7b9c289fd'),
-    ('b0000000-0000-0000-0000-000000000001'::UUID,
-     'Default Secret Key', 'sk', 'sk_live_81a_f4e1d9a2bc')
-ON CONFLICT DO NOTHING;
-
--- sovereign_users: US demo rows (Acme Corp / tenant_mike from tenant app)
--- These are the rows the tenant app Table Explorer will display
-INSERT INTO sovereign_users (id, tenant_id, region_code, full_name, email, ssn)
-VALUES
-    (gen_random_uuid(), 'c0000000-0000-0000-0000-000000000001'::UUID,
-     'US', 'Mike Founder',     'mike@example.com',  NULL),
-    (gen_random_uuid(), 'c0000000-0000-0000-0000-000000000001'::UUID,
-     'US', 'Tech Enthusiast',  'tech@domain.com',   NULL),
-    (gen_random_uuid(), 'c0000000-0000-0000-0000-000000000001'::UUID,
-     'US', 'Daily Coder',      'coder@web.net',     '000-11-2222')
-ON CONFLICT DO NOTHING;
-
--- sovereign_users: EU demo rows (FinTech project — eu_data_space partition)
-INSERT INTO sovereign_users (id, tenant_id, region_code, full_name, email, ssn)
-VALUES
-    (gen_random_uuid(), 'c0000000-0000-0000-0000-000000000002'::UUID,
-     'EU', 'Hans Mueller', 'hans@fintech.eu',  NULL),
-    (gen_random_uuid(), 'c0000000-0000-0000-0000-000000000002'::UUID,
-     'EU', 'Maria Rossi',  'maria@fintech.eu', 'DE-987-654')
-ON CONFLICT DO NOTHING;
-
--- Infrastructure events (admin dashboard "Recent Infrastructure Events" panel)
-INSERT INTO sovra_control.query_log
-    (event_type, title, description, region_code, occurred_at)
-VALUES
-    ('tenant_provisioned', 'Tenant Provisioned',
-     'Acme Corp created new temporal branch.',         'US', NOW() - INTERVAL '2 minutes'),
-    ('autoscale',          'Auto-Scale Triggered',
-     'Added 4 read replicas to EU-Central.',           'EU', NOW() - INTERVAL '15 minutes'),
-    ('routing_update',     'Routing Update',
-     'MaxMind ASN rules updated across Gateway nodes.', NULL, NOW() - INTERVAL '1 hour'),
-    ('duckdb_query',       'DuckDB Aggregation',
-     'Global federated query executed by Tenant ID 402.', 'US', NOW() - INTERVAL '2 hours')
-ON CONFLICT DO NOTHING;
+-- (Demo data removed to ensure production readiness)
 
 
 -- ==============================================================================

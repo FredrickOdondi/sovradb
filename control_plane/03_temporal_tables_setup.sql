@@ -47,7 +47,7 @@ CREATE TRIGGER versioning_trigger
 CREATE ROLE developer_branch_role WITH LOGIN PASSWORD 'DevTesting123!';
 GRANT CONNECT ON DATABASE sovra_db TO developer_branch_role;
 GRANT USAGE ON SCHEMA public TO developer_branch_role;
-GRANT SELECT ON TABLE sovereign_users TO developer_branch_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sovereign_users TO developer_branch_role;
 GRANT SELECT ON TABLE sovereign_users_history TO developer_branch_role;
 
 -- 6. Enforce Cryptographic Obfuscation on the Active Branch

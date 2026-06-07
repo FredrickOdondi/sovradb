@@ -48,7 +48,7 @@ export default async function AdminDashboard() {
         <MetricBox
           title="Total User Records"
           value={m ? Number(m.total_user_rows).toLocaleString() : "—"}
-          subtitle={`US: ${m?.us_user_rows ?? 0} · EU: ${m?.eu_user_rows ?? 0}`}
+          subtitle={`US: ${m?.us_user_rows ?? 0} · EU: ${m?.eu_user_rows ?? 0} · AF: ${m?.af_user_rows ?? 0}`}
           icon={Database}
         />
         <MetricBox

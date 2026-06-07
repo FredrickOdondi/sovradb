@@ -1,5 +1,6 @@
 import { fetchProjectPolicy } from "@/app/actions";
 import { Shield, Globe, Lock } from "lucide-react";
+import FpeToggle from "./fpe-toggle";
 
 export default async function RulesPage() {
   const policyRes = await fetchProjectPolicy();
@@ -89,15 +90,7 @@ export default async function RulesPage() {
                   <span className={`font-medium ${fpeEnabled ? "" : "text-muted-foreground"}`}>
                     Active Policy:
                   </span>
-                  {fpeEnabled ? (
-                    <span className="bg-primary/20 text-primary px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-                      Enabled
-                    </span>
-                  ) : (
-                    <span className="border border-border text-muted-foreground px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-                      Disabled
-                    </span>
-                  )}
+                  {policy && <FpeToggle tenantId={policy.tenant_id} initialStatus={fpeEnabled} />}
                 </div>
                 <p className="text-xs text-muted-foreground mt-3">
                   {fpeEnabled

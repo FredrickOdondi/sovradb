@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-import { Home, Database, Shield, GitBranch, TerminalSquare, Table2, Server, Activity, Globe, ShieldAlert, Settings, Sun, Moon, LogOut } from "lucide-react";
+import { Home, Database, Shield, GitBranch, TerminalSquare, Table2, Server, Activity, Globe, ShieldAlert, Settings, Sun, Moon, LogOut, Zap, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
@@ -22,6 +22,7 @@ import {
 const studioItems = [
   { title: "Global Overview", url: "/studio", icon: Home },
   { title: "Table Explorer", url: "/studio/tables", icon: Table2 },
+  { title: "Edge Sync Catalyst", url: "/studio/local-first", icon: Zap },
   { title: "Federated SQL Editor", url: "/studio/sql", icon: TerminalSquare },
   { title: "Geo-Partition ERD", url: "/studio/schema", icon: Database },
   { title: "Temporal Branching", url: "/studio/branches", icon: GitBranch },
@@ -33,6 +34,7 @@ const adminItems = [
   { title: "Platform Telemetry", url: "/admin", icon: Server },
   { title: "Sovereign Nodes", url: "/admin/nodes", icon: Globe },
   { title: "Tenant Traffic", url: "/admin/traffic", icon: Activity },
+  { title: "Platform Admins", url: "/admin/admins", icon: Users },
   { title: "FPE Vaults", url: "/admin/vaults", icon: ShieldAlert },
 ];
 

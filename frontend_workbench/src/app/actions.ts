@@ -64,6 +64,8 @@ export async function executeFederatedQuery() {
           SELECT tenant_id FROM public.sovereign_users
           UNION ALL
           SELECT tenant_id FROM eu_foreign.sovereign_users
+          UNION ALL
+          SELECT tenant_id FROM af_foreign.sovereign_users
         ) as global_federation
         GROUP BY tenant_id
         ORDER BY global_user_count DESC
@@ -89,8 +91,21 @@ export async function executeRawEditorQuery(query: string) {
     const ns = await getActiveNamespace();
     const safeNs = ns.replace(/[^a-z0-9_]/gi, '');
     
+    // Fetch the actual UUID tenant_id for RLS isolation
+    const [project] = await sql`
+      SELECT tenant_id FROM sovra_control.projects 
+      WHERE replace(lower(company_name), ' ', '') = ${safeNs.toLowerCase()} 
+         OR company_name = ${ns}
+    `;
+    const tenantId = project?.tenant_id;
+    
     await sql.unsafe(`SET search_path TO "${safeNs}", public`);
     await sql`SET ROLE developer_branch_role`;
+    
+    if (tenantId) {
+      await sql`SELECT set_config('app.current_tenant', ${tenantId}::text, false)`;
+    }
+    
     const result = await sql.unsafe(query);
     await sql`RESET ROLE`;
     await sql.unsafe(`RESET search_path`);
@@ -783,11 +798,12 @@ export async function loginTenant(email: string, passwordHash: string) {
   }
 }
 
-export async function loginPlatformAdmin(email: string, passwordHash: string) {
+export async function loginPlatformAdmin(email: string, passwordInput: string) {
   try {
+    const encodedPassword = Buffer.from(passwordInput).toString('base64');
     const [admin] = await sql`
       SELECT id FROM sovra_control.platform_admins 
-      WHERE email = ${email} AND password_hash = ${passwordHash}
+      WHERE email = ${email} AND password_hash = ${encodedPassword}
     `;
     if (!admin) throw new Error("Invalid superadmin credentials. Intrusion attempt logged.");
 
@@ -827,6 +843,35 @@ export async function createPlatformAdmin(email: string, passwordHash: string) {
       RETURNING id, email, created_at
     `;
     return { success: true, data: JSON.parse(JSON.stringify(row)) };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deletePlatformAdmin(id: string) {
+  try {
+    // Prevent deleting the default super_admin to avoid lockout
+    const [admin] = await sql`SELECT role FROM sovra_control.platform_admins WHERE id = ${id}`;
+    if (admin && admin.role === 'super_admin') {
+      throw new Error("Cannot delete the default super administrator.");
+    }
+    
+    await sql`DELETE FROM sovra_control.platform_admins WHERE id = ${id}`;
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function toggleFpeStatus(tenantId: string, enabled: boolean) {
+  try {
+    await logTraffic("UPDATE", "toggleFpeStatus", `Toggled FPE to ${enabled}`);
+    await sql`
+      UPDATE sovra_control.projects 
+      SET fpe_enabled = ${enabled}, fpe_enabled_at = NOW() 
+      WHERE tenant_id = ${tenantId}
+    `;
+    return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
