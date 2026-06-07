@@ -1,0 +1,55 @@
+[package]
+name = "gateway"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# ─── Async Runtime ──────────────────────────────────────────────────────────
+# tokio (MIT) — async I/O foundation
+tokio = { version = "1.35", features = ["full"] }
+
+# ─── PostgreSQL Wire Protocol (Lego block — replaces raw tokio::io::copy) ───
+# pgwire (MIT) — provides StartupHandler + SimpleQueryHandler traits.
+# Handles all wire protocol framing. We implement the handlers; pgwire
+# handles the bytes. Previously: raw TCP copy with no protocol awareness.
+pgwire = { version = "0.23", features = ["server-api-aws-lc-rs"] }
+
+# ─── PostgreSQL Client (backend forwarding) ──────────────────────────────────
+# tokio-postgres (MIT) — forwards inspected/tokenized queries to the real PG nodes.
+tokio-postgres = "0.7"
+
+# ─── SQL AST Inspection (already correct OSS lego block) ─────────────────────
+# sqlparser (Apache-2.0) — parses SQL to AST for DML/DDL classification.
+sqlparser = "0.41"
+
+# ─── IP Pseudonymization (replaces 121-line hand-written Crypto-PAn) ─────────
+# ipcrypt-rs (MIT) — prefix-preserving AES-128 IPv4/IPv6 encryption.
+# Semantics identical to Crypto-PAn: IPs in the same subnet map to synthetic
+# IPs in the same synthetic subnet. Zero custom crypto.
+ipcrypt-rs = "0.9.2"
+
+# ─── Format-Preserving Encryption (replaces 115-line hand-written Feistel) ───
+# fpe (Apache-2.0) — NIST SP 800-38G FF1 standard FPE.
+# SSN 123456789 → structurally valid 9-digit ciphertext. Length/format preserved.
+# Previously: bespoke 9-round Feistel in sovereign_gateway/ (separate crate island).
+fpe = "0.4"
+
+# AES cipher — v0.6 to match fpe 0.4's cipher dependency (cipher = "0.2")
+# aes 0.8 uses cipher 0.4 which is incompatible with fpe 0.4's BlockCipher trait.
+aes = "0.6"
+
+# ─── GeoIP (ASN-aware routing — already in Cargo.toml, now actually used) ────
+maxminddb = "0.24"
+# Serialization — required by maxminddb's geoip2 record types
+serde = { version = "1", features = ["derive"] }
+
+# ─── TLS on both ends ────────────────────────────────────────────────────────
+rustls = "0.22"
+
+# ─── Utilities ────────────────────────────────────────────────────────────────
+bytes = "1.5"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+async-trait = "0.1"
+futures = "0.3"

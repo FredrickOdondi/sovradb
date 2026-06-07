@@ -1,0 +1,140 @@
+version: "3.9"
+
+# ==============================================================================
+# Block 4: Edge Sync Catalyst — PowerSync Service
+#
+# Wires the PowerSync sync service to the SovraDB Sovereign Storage Fabric.
+# PowerSync maintains a sync-cache of the PostgreSQL WAL and streams delta
+# changes to connected edge clients (WASM SQLite / IndexedDB on device).
+#
+# CONTEXT.md: "sync engines like PowerSync, RxDB, ElectricSQL, and Zero enable
+#   instant user interfaces by downloading data to the client ahead of time"
+#
+# FRONTEND CONTRACT: studio/tables/page.tsx shows tenant_mike data via local
+#   sync. branches/page.tsx shows connection URIs with ?branch= params.
+#   The PowerSync service sits between the PG cluster and edge clients.
+#
+# NETWORK TOPOLOGY:
+#   Edge Client (WASM SQLite)
+#       ↓  WebSocket / SSE delta stream
+#   PowerSync Service (this container, port 8080)
+#       ↓  Logical replication (powersync_primary slot)
+#   Sovereign Gateway (gateway/, port 5432 proxy)
+#       ↓  pgwire + tokenization + geo-routing
+#   sovra_postgres_us / sovra_postgres_eu  (storage_fabric/)
+#
+# SECRETS MANAGEMENT:
+#   All secrets are injected via environment variables.
+#   In production: use Docker secrets or a vault injection sidecar.
+#   Do NOT commit .env files with real values to version control.
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # PowerSync Service
+  # Official image: journeyapps/powersync-service
+  # Docs: https://docs.powersync.com/self-hosted
+  # ----------------------------------------------------------------------------
+  powersync:
+    image: journeyapps/powersync-service:latest
+    container_name: sovra_powersync
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"     # Client WebSocket / HTTP sync endpoint
+      - "8081:8081"     # Internal metrics / health endpoint
+
+    volumes:
+      # Sync rules — defines which data reaches which edge client
+      # Tenant scoping + column filtering + sovereignty enforcement
+      - ./config:/config:ro
+
+    environment:
+      # ── PostgreSQL Connection (via Sovereign Gateway proxy) ─────────────────
+      # Connects through the gateway proxy (port 5432) so that:
+      #   1. FPE tokenization is applied before WAL reads
+      #   2. Geo-routing enforcement is in effect
+      #   3. TLS termination is handled by gateway/src/tls.rs
+      #
+      # powersync_role: NOINHERIT, REPLICATION, CONNECTION LIMIT 10
+      # Created in: edge_sync/02_logical_replication_setup.sql
+      POWERSYNC_PG_URI: >-
+        postgres://powersync_role:${POWERSYNC_PG_PASSWORD:-SyncSecret123!}@sovra_gateway:5432/sovra_db
+
+      # ── Replication Slot ────────────────────────────────────────────────────
+      # Use the primary slot created in 02_logical_replication_setup.sql
+      POWERSYNC_REPLICATION_SLOT: powersync_primary
+
+      # ── Sync Rules Configuration ────────────────────────────────────────────
+      POWERSYNC_CONFIG_PATH: /config/sync_rules.yml
+
+      # ── JWT Authentication ──────────────────────────────────────────────────
+      # The PowerSync service validates JWT tokens from edge clients.
+      # The JWT must contain: tenant_id, region_code, user_id claims.
+      # The Sovereign Gateway issues these JWTs after authenticating users.
+      POWERSYNC_JWT_SECRET: ${POWERSYNC_JWT_SECRET:-change_me_in_production}
+
+      # ── Service Binding ─────────────────────────────────────────────────────
+      POWERSYNC_BIND_HOST: "0.0.0.0"
+      POWERSYNC_BIND_PORT: "8080"
+      POWERSYNC_METRICS_PORT: "8081"
+
+      # ── WAL Heartbeat ───────────────────────────────────────────────────────
+      # Emit a heartbeat WAL message every 30s to keep the powersync_heartbeat
+      # slot active and prevent excessive WAL retention on the primary.
+      POWERSYNC_HEARTBEAT_INTERVAL_SECONDS: "30"
+
+      # ── Telemetry (disabled for self-hosted sovereign deployments) ──────────
+      POWERSYNC_TELEMETRY_DISABLED: "true"
+
+    depends_on:
+      - sovra_gateway_check
+
+    networks:
+      - sovra_net
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ----------------------------------------------------------------------------
+  # Gateway Connectivity Check
+  # A lightweight service that confirms the Sovereign Gateway is reachable
+  # before starting PowerSync. Prevents slot creation failures on cold start.
+  # ----------------------------------------------------------------------------
+  sovra_gateway_check:
+    image: postgres:18-alpine
+    container_name: sovra_powersync_gateway_check
+    restart: "no"
+    command: >
+      sh -c "
+        until pg_isready -h sovra_gateway -p 5432 -U powersync_role; do
+          echo 'Waiting for Sovereign Gateway...';
+          sleep 2;
+        done;
+        echo 'Sovereign Gateway is ready.';
+      "
+    environment:
+      PGPASSWORD: ${POWERSYNC_PG_PASSWORD:-SyncSecret123!}
+    networks:
+      - sovra_net
+
+# ==============================================================================
+# Networks
+# sovra_net: shared with storage_fabric/docker-compose.yml
+# Use `docker network create sovra_net` before first run if not using
+# the root docker-compose that defines all services together.
+# ==============================================================================
+networks:
+  sovra_net:
+    external: true
+    name: sovra_net

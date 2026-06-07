@@ -1,0 +1,140 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  /* Notion Light Theme Colors */
+  --background: #ffffff;
+  --foreground: #52525b;
+  
+  --card: #ffffff; 
+  --card-foreground: #52525b;
+  
+  --popover: #ffffff;
+  --popover-foreground: #52525b;
+  
+  --primary: #f97316;
+  --primary-foreground: #ffffff;
+  
+  --secondary: #f1f1ef;
+  --secondary-foreground: #52525b;
+  
+  --muted: #f1f1ef;
+  --muted-foreground: #787774;
+  
+  --accent: #f1f1ef; 
+  --accent-foreground: #0f0f0f;
+  
+  --destructive: #ef4444;
+  
+  --border: #e2e2e2;
+  --input: #e2e2e2;
+  --ring: #a1a1aa;
+  
+  --radius: 0.375rem;
+  
+  --sidebar: #f7f7f5;
+  --sidebar-foreground: #52525b;
+  --sidebar-primary: #0f0f0f;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f1ef;
+  --sidebar-accent-foreground: #0f0f0f;
+  --sidebar-border: #e2e2e2;
+  --sidebar-ring: #a1a1aa;
+}
+
+.dark {
+  /* Notion Dark Theme Colors */
+  --background: oklch(0.23 0 0); /* #191919 */
+  --foreground: oklch(0.85 0 0); /* rgba(255, 255, 255, 0.81) */
+  
+  --card: oklch(0.23 0 0); 
+  --card-foreground: oklch(0.85 0 0);
+  
+  --popover: oklch(0.26 0 0); /* #252525 */
+  --popover-foreground: oklch(0.85 0 0);
+  
+  --primary: #f97316;
+  --primary-foreground: #191919;
+  
+  --secondary: oklch(0.28 0 0); /* Hover states */
+  --secondary-foreground: oklch(0.85 0 0);
+  
+  --muted: oklch(0.28 0 0);
+  --muted-foreground: oklch(0.65 0 0); /* rgba(255, 255, 255, 0.44) */
+  
+  --accent: oklch(0.28 0 0); /* Selection/hover background */
+  --accent-foreground: oklch(0.95 0 0);
+  
+  --destructive: oklch(0.6 0.2 20);
+  
+  --border: oklch(0.33 0 0); /* #333333 */
+  --input: oklch(0.33 0 0);
+  --ring: oklch(0.4 0 0);
+  
+  --radius: 0.375rem;
+  
+  --sidebar: oklch(0.25 0 0); /* #202020 */
+  --sidebar-foreground: oklch(0.85 0 0);
+  --sidebar-primary: oklch(0.85 0 0);
+  --sidebar-primary-foreground: oklch(0.25 0 0);
+  --sidebar-accent: oklch(0.28 0 0);
+  --sidebar-accent-foreground: oklch(0.95 0 0);
+  --sidebar-border: oklch(0.33 0 0);
+  --sidebar-ring: oklch(0.4 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-accent selection:text-accent-foreground;
+  }
+  html {
+    @apply font-sans;
+    font-size: 14px;
+    color-scheme: light dark;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-foreground font-semibold;
+  }
+}

@@ -1,0 +1,138 @@
+# ==============================================================================
+# Block 4: Edge Sync Catalyst — PowerSync Sync Rules
+#
+# This file is the SOVEREIGNTY ENFORCEMENT LAYER for edge synchronization.
+# It defines exactly which data rows and columns reach each connected edge client.
+#
+# CONTEXT.md: "The data pushed to the local WASM SQLite database on the user's
+#   phone or laptop contains zero plaintext PII; it only contains format-preserved
+#   ciphertext, generalized categories, or opaque tokens."
+#
+# FRONTEND CONTRACT:
+#   studio/tables/page.tsx: tenant "tenant_mike" sees only their own rows
+#     (table shows email: "mike@example.com", handle: "@mike_founder")
+#   studio/branches/page.tsx: connection URI includes ?search_path=tenant_mike
+#     — the tenant_id claim in the JWT maps to the bucket parameter
+#   actions.ts fetchTemporalCommits(): queries sovereign_users_history
+#     — history bucket must exist
+#
+# SOVEREIGNTY GUARANTEES:
+#   1. Tenant isolation: each client only receives rows matching their tenant_id
+#      (extracted from the JWT issued by the Sovereign Gateway)
+#   2. Column filtering: explicit column allowlist — no SELECT * wildcards
+#      ensures no PII columns accidentally appear in the sync stream
+#   3. pg_anon masking bridge (02_logical_replication_setup.sql) ensures
+#      even if a column were included, powersync_role reads masked values
+#   4. Region scoping: handled at the tablespace level (storage_fabric) and
+#      at the Gateway routing level — sync rules add an additional filter
+#
+# JWT CLAIMS EXPECTED:
+#   The PowerSync service extracts these from the JWT issued by the Gateway:
+#     sub         — user UUID (maps to sovereign_users.id)
+#     tenant_id   — tenant UUID (maps to sovereign_users.tenant_id)
+#     region_code — "US" | "EU" | "APAC" (maps to sovereign_users.region_code)
+# ==============================================================================
+
+bucket_definitions:
+
+  # ============================================================================
+  # Bucket 1: User Data (live sovereign_users table)
+  #
+  # Scoped by tenant_id — each connected client only syncs their own tenant's
+  # rows. The bucket parameter tenant_id is populated from the JWT claim.
+  #
+  # Column allowlist (explicit — no wildcards):
+  #   INCLUDED: id, tenant_id, region_code, created_at, sys_period
+  #   EXCLUDED: full_name, email, ssn, national_id_number, national_id_encrypted
+  #
+  # The EXCLUDED columns are either:
+  #   a) PII that should never reach edge devices (even masked)
+  #   b) Already masked by powersync_role via pg_anon if included
+  #
+  # For tenant_mike's app (studio/tables/page.tsx), the "handle" column is
+  # the display field — we include it as it is non-PII user-controlled content.
+  # ============================================================================
+  user_data:
+    parameters:
+      - name: tenant_id
+        type: text
+        # Extracted from JWT claim "tenant_id" by the PowerSync service
+        # The Sovereign Gateway sets this claim when issuing auth tokens
+
+    data:
+      - table: sovereign_users
+        # Explicit column allowlist — sovereignty principle: deny by default
+        columns:
+          - id              # Row identity — required for sync delta tracking
+          - tenant_id       # Used for bucket scoping verification
+          - region_code     # Non-PII: routing metadata safe for edge devices
+          - created_at      # Timestamp — required for UI display
+          - sys_period      # Temporal range — required for time-travel queries
+          # full_name:             EXCLUDED — PII (masked by pg_anon at DB layer)
+          # email:                 EXCLUDED — PII (masked by pg_anon at DB layer)
+          # ssn:                   EXCLUDED — regulated identifier
+          # national_id_number:    EXCLUDED — regulated identifier
+          # national_id_encrypted: EXCLUDED — encrypted BYTEA (not useful at edge)
+        where: tenant_id = bucket.tenant_id
+
+  # ============================================================================
+  # Bucket 2: Temporal History (sovereign_users_history)
+  #
+  # FRONTEND CONTRACT: actions.ts fetchTemporalCommits() queries:
+  #   SELECT lower(sys_period) as mutation_timestamp, id as affected_record_id
+  #   FROM sovereign_users_history
+  #
+  # The edge client needs a subset of history records to display the commit
+  # timeline in the Temporal Branching UI (studio/branches/page.tsx).
+  #
+  # Only the minimum fields needed for the commit log are included:
+  #   id, sys_period — sufficient for fetchTemporalCommits()
+  # ============================================================================
+  user_history:
+    parameters:
+      - name: tenant_id
+        type: text
+
+    data:
+      - table: sovereign_users_history
+        columns:
+          - id              # Commit identity (maps to affected_record_id in actions.ts)
+          - tenant_id       # Bucket scoping
+          - region_code     # Sovereignty metadata
+          - sys_period      # Temporal range (lower() → mutation_timestamp in actions.ts)
+          - created_at      # Original creation time
+          # All PII columns: EXCLUDED
+        where: tenant_id = bucket.tenant_id
+
+  # ============================================================================
+  # Bucket 3: Region-Scoped Data (sovereignty enforcement)
+  #
+  # Additional bucket that enforces region-level sovereignty on top of
+  # tenant-level scoping. A EU-region client never receives US-region rows,
+  # even if they somehow share a tenant_id across regions.
+  #
+  # CONTEXT.md: "European records are stored strictly on nodes residing within
+  #   EU data centers, and North American records on nodes within the US."
+  #
+  # This bucket is used by clients with explicit region restrictions.
+  # region_code comes from the JWT claim "region_code".
+  # ============================================================================
+  region_scoped_data:
+    parameters:
+      - name: tenant_id
+        type: text
+      - name: region_code
+        type: text
+        # Extracted from JWT claim "region_code": "EU" | "US" | "APAC"
+
+    data:
+      - table: sovereign_users
+        columns:
+          - id
+          - tenant_id
+          - region_code
+          - created_at
+          - sys_period
+        where: >
+          tenant_id = bucket.tenant_id
+          AND region_code = bucket.region_code

@@ -1,0 +1,129 @@
+# ==============================================================================
+# storage_fabric/docker-compose.yml — SovraDB Distributed Storage Cluster
+#
+# Block 2: Distributed Storage Fabric (Geo-Partitioned PostgreSQL 18 + pgcrypto + spock)
+# Block 5: Federated Analytical Observer (pg_duckdb embedded analytics)
+#
+# Base image: postgres:18 (community — PostgreSQL License)
+# Per CONTEXT.md: "standard PostgreSQL extensions rather than proprietary forks"
+#
+# Two-node cluster:
+#   postgres_us → Primary node, US-East region (port 5432)
+#   postgres_eu → Primary node, EU-Central region (port 5433)
+#
+# Both nodes run as full peers under spock multi-master logical replication,
+# so each region can accept writes independently. Row-level geo-partitioning
+# ensures EU data physically remains on the EU node and US data on the US node.
+# ==============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Node A: United States Region
+  # ---------------------------------------------------------------------------
+  postgres_us:
+    build: .
+    container_name: sovra_postgres_us
+    environment:
+      POSTGRES_USER: sovra_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-SuperSecretSCRAMPassword123!}
+      POSTGRES_DB: sovra_db
+      # Enforce SCRAM-SHA-256 authentication — no MD5 fallback (Block 2)
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./00_init_dirs.sh:/docker-entrypoint-initdb.d/00_init_dirs.sh
+      - ./00_init_tablespaces.sql:/docker-entrypoint-initdb.d/01_init_tablespaces.sql
+      - ./01_geo_partitioned_schema.sql:/docker-entrypoint-initdb.d/02_geo_partitioned_schema.sql
+      - ./02_tde_setup.sql:/docker-entrypoint-initdb.d/03_tde_setup.sql
+      - ./03_spock_setup.sql:/docker-entrypoint-initdb.d/04_spock_setup.sql
+      # Block 6: Control Plane — roles, RLS, sovra_control schema, obfuscation, wiring
+      - ../control_plane/03_temporal_tables_setup.sql:/docker-entrypoint-initdb.d/06_temporal_tables.sql
+      - ../control_plane/04_enable_rls.sql:/docker-entrypoint-initdb.d/07_enable_rls.sql
+      - ../control_plane/05_sovra_control_schema.sql:/docker-entrypoint-initdb.d/08_sovra_control.sql
+      - ../control_plane/06_default_partition.sql:/docker-entrypoint-initdb.d/09_default_partition.sql
+      - ../control_plane/07_create_api_role.sql:/docker-entrypoint-initdb.d/10_api_role.sql
+      - ../control_plane/08_cryptographic_obfuscation.sql:/docker-entrypoint-initdb.d/11_crypto_obfuscation.sql
+      # Block 3: Obfuscation Engine (pg_anon dynamic masking)
+      - ../obfuscation_engine/01_cryptographic_rules.sql:/docker-entrypoint-initdb.d/12_masking_rules.sql
+      - ../obfuscation_engine/02_control_plane_fpe_registry.sql:/docker-entrypoint-initdb.d/13_fpe_registry.sql
+      - ../obfuscation_engine/03_static_masking_staging.sql:/docker-entrypoint-initdb.d/14_static_masking.sql
+      # Block 4: Edge Sync
+      - ../edge_sync/02_logical_replication_setup.sql:/docker-entrypoint-initdb.d/15_edge_sync.sql
+      # Frontend Wiring Layer — schema fixes + demo data (MUST be last)
+      - ../control_plane/09_fix_sovereign_schema_and_views.sql:/docker-entrypoint-initdb.d/16_wiring_layer.sql
+      # Block 5: pg_duckdb + postgres_fdw federation runs from the US node outward.
+      # This script runs CREATE EXTENSION pg_duckdb and wires up eu_foreign schema.
+      # NOTE: The EU node must be online before this completes (FDW requires network).
+      - ../analytics_observer/03_federated_analytics.sql:/docker-entrypoint-initdb.d/17_federated_analytics.sql
+      - pg_data_us_core:/var/lib/postgresql
+      - pg_data_us_tablespace:/data_us
+      - pg_data_eu_tablespace:/data_eu
+    command:
+      - "postgres"
+      # ==========================================================================
+      # Block 2: Shared Preload Libraries
+      #   - anon:    pg_anon dynamic masking (Block 3 Obfuscation Engine)
+      # Note: spock is currently disabled pending PG18 support.
+      #       pg_tde is Percona-only and cannot load on community postgres:18.
+      #       Column-level AES-256 encryption is provided by pgcrypto instead.
+      # Block 5: pg_duckdb is loaded on-demand via CREATE EXTENSION — no preload needed
+      # ==========================================================================
+      - "-c"
+      - "shared_preload_libraries=anon"
+      - "-c"
+      - "password_encryption=scram-sha-256"
+      - "-c"
+      - "wal_level=logical"
+
+  # ---------------------------------------------------------------------------
+  # Node B: European Union Region
+  # ---------------------------------------------------------------------------
+  postgres_eu:
+    build: .
+    container_name: sovra_postgres_eu
+    environment:
+      POSTGRES_USER: sovra_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-SuperSecretSCRAMPassword123!}
+      POSTGRES_DB: sovra_db
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./00_init_dirs.sh:/docker-entrypoint-initdb.d/00_init_dirs.sh
+      - ./00_init_tablespaces.sql:/docker-entrypoint-initdb.d/01_init_tablespaces.sql
+      - ./01_geo_partitioned_schema.sql:/docker-entrypoint-initdb.d/02_geo_partitioned_schema.sql
+      - ./02_tde_setup.sql:/docker-entrypoint-initdb.d/03_tde_setup.sql
+      - ./03_spock_setup.sql:/docker-entrypoint-initdb.d/04_spock_setup.sql
+      # EU node: control plane + obfuscation engine (same scripts, EU partition)
+      - ../control_plane/03_temporal_tables_setup.sql:/docker-entrypoint-initdb.d/06_temporal_tables.sql
+      - ../control_plane/04_enable_rls.sql:/docker-entrypoint-initdb.d/07_enable_rls.sql
+      - ../control_plane/05_sovra_control_schema.sql:/docker-entrypoint-initdb.d/08_sovra_control.sql
+      - ../control_plane/06_default_partition.sql:/docker-entrypoint-initdb.d/09_default_partition.sql
+      - ../control_plane/07_create_api_role.sql:/docker-entrypoint-initdb.d/10_api_role.sql
+      - ../control_plane/08_cryptographic_obfuscation.sql:/docker-entrypoint-initdb.d/11_crypto_obfuscation.sql
+      - ../obfuscation_engine/01_cryptographic_rules.sql:/docker-entrypoint-initdb.d/12_masking_rules.sql
+      - ../obfuscation_engine/02_control_plane_fpe_registry.sql:/docker-entrypoint-initdb.d/13_fpe_registry.sql
+      - ../control_plane/09_fix_sovereign_schema_and_views.sql:/docker-entrypoint-initdb.d/14_wiring_layer.sql
+      - pg_data_eu_core:/var/lib/postgresql
+      - pg_data_eu_tablespace:/data_eu
+      - pg_data_us_tablespace:/data_us
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=anon"
+      - "-c"
+      - "password_encryption=scram-sha-256"
+      - "-c"
+      - "wal_level=logical"
+
+volumes:
+  pg_data_us_core:
+  pg_data_us_tablespace:
+  pg_data_eu_core:
+  pg_data_eu_tablespace:
+
+networks:
+  sovra_net:
+    driver: bridge
+    name: sovra_net
